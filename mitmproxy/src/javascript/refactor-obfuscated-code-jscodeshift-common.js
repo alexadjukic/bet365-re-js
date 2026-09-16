@@ -1,6 +1,6 @@
-import escodegen from "escodegen";
-import * as esprima from "esprima";
-import fs from "node:fs";
+const escodegen = require("escodegen");
+const esprima = require("esprima");
+const fs = require("node:fs");
 
 class AstTransformer {
     constructor(stepNumber, jscodeshiftAst, output, outputBaseName) {

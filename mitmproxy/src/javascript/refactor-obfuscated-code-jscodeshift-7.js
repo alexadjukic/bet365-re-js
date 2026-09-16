@@ -1,5 +1,5 @@
-import {AstTransformer} from "./refactor-obfuscated-code-jscodeshift-common";
-import j from "jscodeshift";
+const {AstTransformer} = require("./refactor-obfuscated-code-jscodeshift-common");
+const j = require("jscodeshift");
 
 const membershipRefactor = new Set(['push', 'shift', 'code', 'length', 'call', 'exports', 'charCodeAt', 'fromCharCode', 'toString', 'charAt', 'substr', 'indexOf', 'pow', 'pop', 'apply', 'slice', 'from', 'repeat', 'ns_gen5_search', 'Serialiser', 'Parser', '__vm', '__spreadArrays', 'bind', 'prototype']);
 

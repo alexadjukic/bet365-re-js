@@ -1,5 +1,5 @@
-import {AstTransformer} from "./refactor-obfuscated-code-jscodeshift-common";
-import j from "jscodeshift";
+const {AstTransformer} = require("./refactor-obfuscated-code-jscodeshift-common");
+const j = require("jscodeshift");
 
 const removeClosest = {
     '_0x2cf5bb': 'IfStatement',

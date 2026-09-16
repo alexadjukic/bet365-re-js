@@ -1,12 +1,12 @@
-import fs from "node:fs";
+const fs = require("node:fs");
+const j = require("jscodeshift");
+const esprima = require("esprima");
+const escodegen = require("escodegen");
+const {ChainedTransformer} = require("./refactor-obfuscated-code-jscodeshift-chained");
 
-if (typeof __dirname === 'undefined' || !__dirname) {
-    __dirname = '.';
-}
-
-const rawObfuscatedJsFileName = argv[2];
-const deobfuscatedJsFileName = argv[3];
-const outputIntermediateSteps = argv[4] ?? true;
+const rawObfuscatedJsFileName = process.argv[2];
+const deobfuscatedJsFileName = process.argv[3];
+const outputIntermediateSteps = process.argv[4] ?? true;
 if (!rawObfuscatedJsFileName) {
     throw new Error('Provide an obfuscated file');
 }
@@ -24,8 +24,4 @@ const ast = esprima.parseScript(transformedJscodeshiftAst.toSource());
 
 // convert into ast for pretty printing
 const refactoredJsCode = escodegen.generate(ast);
-fs.writeFile(deobfuscatedJsFileName, refactoredJsCode, error => {
-    if (error) {
-        console.error(error);
-    }
-});
+fs.writeFileSync(deobfuscatedJsFileName, refactoredJsCode);

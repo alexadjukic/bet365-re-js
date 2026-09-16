@@ -1,4 +1,4 @@
-import {AstTransformer} from "./refactor-obfuscated-code-jscodeshift-common";
+const {AstTransformer} = require("./refactor-obfuscated-code-jscodeshift-common");
 
 var refactorVariables = {
     '_0x1e16': 'keywords',
