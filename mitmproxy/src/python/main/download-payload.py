@@ -1,4 +1,6 @@
+import json
 import logging
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -13,6 +15,7 @@ class JavascriptExtractor:
     project_root_directory = current_directory.joinpath("../../../..").absolute()
     output_base_path = str((project_root_directory / "output").absolute()) + "/"
     javascript_base_path = str((project_root_directory / "mitmproxy/src/javascript").absolute()) + "/"
+    manifest_file_path = str((project_root_directory / "output" / "manifest.jsonl").absolute())
     file_delimiter = b'\x03'b'\x06'b'\x05'
     obfuscated_start_string = "(function(){ var _0x123a="
     pre_transform_code_file_name = "pre-transform-code.js"
@@ -23,9 +26,13 @@ class JavascriptExtractor:
     node_executable_file: str
     function_names: list
     filter: flowfilter.TFilter
+    html_filter: flowfilter.TFilter
+    inline_script_pattern = re.compile(r"<script(?![^>]*\bsrc\s*=)[^>]*>(.*?)</script>", re.IGNORECASE | re.DOTALL)
+    sequence_number = 0
 
     def configure(self, updated):
         self.filter = flowfilter.parse("~u '/Api/1/Blob'")
+        self.html_filter = flowfilter.parse("~t text/html")
         # work out function names from "*-new.js" files
         self.node_executable_file = subprocess.run(["which", "node"], capture_output=True, text=True).stdout.strip()
         if not self.node_executable_file:
@@ -43,6 +50,9 @@ class JavascriptExtractor:
         flow.request.headers["User-Agent"] = self.__strip_headless(flow.request.headers["User-Agent"])
 
     def response(self, flow: http.HTTPFlow) -> None:
+        if flowfilter.match(self.html_filter, flow):
+            self.__capture_html(flow)
+
         if flowfilter.match(self.filter, flow):
             file_identifier = str(time.time())
             split_content_bytes = flow.response.content.split(self.file_delimiter)
@@ -61,6 +71,7 @@ class JavascriptExtractor:
                     if received_file is not None:
                         received_file.write(content_bytes)
                         received_file.close()
+                        self.__append_manifest(flow.request.url, "received", received_file_name)
 
                 if is_obfuscated_content:
                     logging.info("Intercepting response: " + flow.request.url)
@@ -69,6 +80,7 @@ class JavascriptExtractor:
                     if received_file is not None:
                         received_file.write(content_bytes)
                         received_file.close()
+                        self.__append_manifest(flow.request.url, "received-obfuscated", received_file_name)
 
                     # either deobfuscate on the fly or get the contents of deobfuscated.js
                     if self.refactor_script_on_fly:
@@ -91,10 +103,42 @@ class JavascriptExtractor:
                         pretty_js_string = jsbeautifier.beautify(complete_file_content_string)
                         sent_file.write(pretty_js_string.encode())
                         sent_file.close()
+                        self.__append_manifest(flow.request.url, "sent", sent_file_name)
 
                     sent_bytes = start_byte + complete_file_content_string.encode()
                 sent_bytes_array.append(sent_bytes)
             flow.response.content = self.file_delimiter.join(sent_bytes_array)
+
+    def __capture_html(self, flow: http.HTTPFlow):
+        logging.info("Capturing HTML document: " + flow.request.url)
+        file_identifier = str(time.time())
+        html_text = flow.response.get_text(strict=False) or ""
+
+        html_file_name = self.output_base_path + file_identifier + "-html.html"
+        with open(html_file_name, "w", encoding="utf-8") as html_file:
+            html_file.write(html_text)
+        self.__append_manifest(flow.request.url, "html", html_file_name)
+
+        for index, script_match in enumerate(self.inline_script_pattern.finditer(html_text)):
+            inline_script_content = script_match.group(1)
+            if not inline_script_content.strip():
+                continue
+            inline_script_file_name = self.output_base_path + file_identifier + "-html-inline-" + str(index) + ".js"
+            with open(inline_script_file_name, "w", encoding="utf-8") as inline_script_file:
+                inline_script_file.write(inline_script_content)
+            self.__append_manifest(flow.request.url, "html-inline-script", inline_script_file_name)
+
+    def __append_manifest(self, url, entry_type, file_name):
+        JavascriptExtractor.sequence_number += 1
+        manifest_entry = {
+            "seq": JavascriptExtractor.sequence_number,
+            "timestamp": time.time(),
+            "url": url,
+            "type": entry_type,
+            "file": file_name,
+        }
+        with open(self.manifest_file_path, "a", encoding="utf-8") as manifest_file:
+            manifest_file.write(json.dumps(manifest_entry) + "\n")
 
     @staticmethod
     def __javascript_full_path(javascript_base_path, function_name, suffix=None):
