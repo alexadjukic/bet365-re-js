@@ -131,7 +131,7 @@ In the future, use of `obfuscated-code-logger.js` might add a lot of noise to co
 ## Obfuscated code rotation
 
 It seems like bet365 is rotating the obfuscated code.
-We manually keep a track of all the obfuscated code in `mitmproxy/src/javascript/obfuscated`.
+We manually keep a track of all the obfuscated code in `data/obfuscated`.
 
 Some of the browser points that affect which version of obfuscated code are:
 
@@ -140,17 +140,34 @@ Some of the browser points that affect which version of obfuscated code are:
 
 ## Development
 
-For ease of development you can put the obfuscated JavaScript in `mitmproxy/src/javascript/obfuscated-original.js` and compile `refactor-obfuscated-code-jscodeshift.js` each time there is change.
+### Layout
 
 ```
-watchexec -e js "touch mitmproxy/src/python/download-payload.py && \
-node mitmproxy/src/javascript/refactor-obfuscated-code-jscodeshift.js \
-mitmproxy/src/javascript/obfuscated-original.js \
-mitmproxy/src/javascript/deobfuscated-output.js && \
-node mitmproxy/src/javascript/pre-transform-code.js"
+mitmproxy/src/javascript/deobfuscator/   the AST transforms (steps 0-11, chained) and their tests
+mitmproxy/src/javascript/cli/            deobfuscate.js (one file), deobfuscate-all.js (a directory)
+data/obfuscated/<name>.js                obfuscated inputs
+data/deobfuscated/<name>.js              matching outputs, same file name as the input
+data/intermediate/<name>/step-<n>.js     per-step results (only with --steps, not tracked)
+data/scratch/                            legacy/experimental files
 ```
 
-This will look for any changes in any `*.js` files (apart from `obfuscated-original.js` and `deobfuscated.js`) and recompile the deobfuscation transform.
+### Deobfuscating
+
+```
+# a single file
+npm run deobfuscate -- data/obfuscated/<name>.js data/deobfuscated/<name>.js [--steps-dir data/intermediate/<name>]
+
+# everything in data/obfuscated (skips up-to-date outputs)
+npm run deobfuscate:all -- [--in DIR] [--out DIR] [--steps] [--force] [--jobs N]
+```
+
+A file that fails is reported and the rest of the batch continues; the exit code is non-zero if any failed.
+
+For ease of development put the obfuscated JavaScript in `data/scratch/obfuscated-original.js` and re-run on every change:
+
+```
+watchexec -e js "npm run deobfuscate -- data/scratch/obfuscated-original.js data/scratch/deobfuscated-output.js --steps-dir data/intermediate/original"
+```
 
 ### Javascript AST manipulation
 

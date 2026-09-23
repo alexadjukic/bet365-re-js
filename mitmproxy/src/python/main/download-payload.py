@@ -84,7 +84,7 @@ class JavascriptExtractor:
 
                     # either deobfuscate on the fly or get the contents of deobfuscated.js
                     if self.refactor_script_on_fly:
-                        refactor_file = Path(self.javascript_base_path + "/refactor-obfuscated-code-jscodeshift.js")
+                        refactor_file = Path(self.javascript_base_path + "/cli/deobfuscate.js")
                         deobfuscated_file_name = JavascriptExtractor.__get_file_name(self.output_base_path, received_file_content_bytes, file_identifier, "deobfuscated", index)
                         subprocess.run([self.node_executable_file, refactor_file, received_file_name, deobfuscated_file_name], stdout=subprocess.PIPE)
                         pre_transform_code_content_string = Path(self.javascript_base_path + self.pre_transform_code_file_name).read_text()
@@ -94,7 +94,7 @@ class JavascriptExtractor:
                             deobfuscated_file_content_minified_string = deobfuscated_file_content_minified_string.replace(replace_content, self.replace_contents[replace_content])
                         complete_file_content_string = pre_transform_code_content_string + deobfuscated_file_content_minified_string + post_transform_code_content_string
                     else:
-                        deobfuscated_file = Path(self.javascript_base_path + "/deobfuscated.js")
+                        deobfuscated_file = Path(str(project_root_directory / "data/scratch/deobfuscated.js"))
                         complete_file_content_string = deobfuscated_file.read_text()
 
                     sent_file_name = JavascriptExtractor.__get_file_name(self.output_base_path, received_file_content_bytes, file_identifier, "sent", index)
