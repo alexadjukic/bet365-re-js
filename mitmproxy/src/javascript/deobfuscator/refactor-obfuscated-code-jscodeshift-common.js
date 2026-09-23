@@ -1,6 +1,7 @@
-const escodegen = require("escodegen");
-const esprima = require("esprima");
+const {parse} = require("@babel/parser");
+const generate = require("@babel/generator").default;
 const fs = require("node:fs");
+const path = require("node:path");
 
 class AstTransformer {
     constructor(stepNumber, jscodeshiftAst, output, outputBaseName) {
@@ -40,15 +41,11 @@ class AstTransformer {
     }
 
     outputToFile() {
-        const jsCode = escodegen.generate(esprima.parseScript(this.jscodeshiftAst.toSource()));
-        if (typeof __dirname === 'undefined' || !__dirname) {
-            __dirname = '.';
-        }
-        fs.writeFileSync(`${__dirname}/${this.outputFileName}`, jsCode, error => {
-            if (error) {
-                console.error(error);
-            }
-        });
+        const jsCode = generate(parse(this.jscodeshiftAst.toSource(), {sourceType: "script"})).code;
+        // an absolute outputBaseName places the step files in an arbitrary directory
+        const outputFilePath = path.resolve(__dirname, this.outputFileName);
+        fs.mkdirSync(path.dirname(outputFilePath), {recursive: true});
+        fs.writeFileSync(outputFilePath, jsCode);
     }
 }
 

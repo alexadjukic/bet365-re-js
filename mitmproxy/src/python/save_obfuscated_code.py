@@ -6,8 +6,8 @@ from pathlib import Path
 
 project_dir = (Path(__file__).parent / "../../..").resolve()
 output_dir = project_dir / "output"
-obfuscated_dir = project_dir / "mitmproxy/src/javascript/obfuscated"
-obfuscated_file = project_dir / "mitmproxy/src/javascript/obfuscated-new-raw.js"
+obfuscated_dir = project_dir / "data/obfuscated"
+obfuscated_file = project_dir / "data/scratch/obfuscated-new-raw.js"
 
 print("project_dir: " + str(project_dir))
 

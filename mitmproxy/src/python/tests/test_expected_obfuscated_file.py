@@ -212,6 +212,6 @@ def test_headless_browser_with_proxy(page):
 
     latest_obfuscated_file_path = get_obfuscated_files()[-1]
     latest_obfuscated_contents = latest_obfuscated_file_path.read_text(encoding="utf-8").strip()
-    expected_obfuscated_contents = (javascript_directory / "obfuscated-new-raw.js").read_text(encoding="utf-8").strip()
+    expected_obfuscated_contents = (project_root_directory / "data/scratch/obfuscated-new-raw.js").read_text(encoding="utf-8").strip()
 
     assert latest_obfuscated_contents == expected_obfuscated_contents
