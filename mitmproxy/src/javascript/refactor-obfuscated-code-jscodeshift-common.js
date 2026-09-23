@@ -1,5 +1,5 @@
-const escodegen = require("escodegen");
-const esprima = require("esprima");
+const {parse} = require("@babel/parser");
+const generate = require("@babel/generator").default;
 const fs = require("node:fs");
 
 class AstTransformer {
@@ -40,7 +40,7 @@ class AstTransformer {
     }
 
     outputToFile() {
-        const jsCode = escodegen.generate(esprima.parseScript(this.jscodeshiftAst.toSource()));
+        const jsCode = generate(parse(this.jscodeshiftAst.toSource(), {sourceType: "script"})).code;
         if (typeof __dirname === 'undefined' || !__dirname) {
             __dirname = '.';
         }

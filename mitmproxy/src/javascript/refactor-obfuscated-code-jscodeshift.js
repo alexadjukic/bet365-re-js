@@ -1,7 +1,7 @@
 const fs = require("node:fs");
 const j = require("jscodeshift");
-const esprima = require("esprima");
-const escodegen = require("escodegen");
+const {parse} = require("@babel/parser");
+const generate = require("@babel/generator").default;
 const {ChainedTransformer} = require("./refactor-obfuscated-code-jscodeshift-chained");
 
 const rawObfuscatedJsFileName = process.argv[2];
@@ -20,8 +20,8 @@ function transform(rawObfuscatedJsCode) {
 
 const rawObfuscatedJsCode = fs.readFileSync(rawObfuscatedJsFileName).toString();
 const transformedJscodeshiftAst = transform(rawObfuscatedJsCode);
-const ast = esprima.parseScript(transformedJscodeshiftAst.toSource());
+const ast = parse(transformedJscodeshiftAst.toSource(), {sourceType: "script"});
 
 // convert into ast for pretty printing
-const refactoredJsCode = escodegen.generate(ast);
+const refactoredJsCode = generate(ast).code;
 fs.writeFileSync(deobfuscatedJsFileName, refactoredJsCode);
