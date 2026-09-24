@@ -169,6 +169,17 @@ For ease of development put the obfuscated JavaScript in `data/scratch/obfuscate
 watchexec -e js "npm run deobfuscate -- data/scratch/obfuscated-original.js data/scratch/deobfuscated-output.js --steps-dir data/intermediate/original"
 ```
 
+### Disassembling VM-protected bundles
+
+Some bundles (e.g. `*-received-32.js`) hold their logic as bytecode for a small register VM (`window.__vm`), which the
+JS deobfuscator cannot lift. Disassemble the embedded program with:
+
+```
+node mitmproxy/src/javascript/cli/disassemble-vm.js <bundle.js> [listing.txt] [--strings]
+```
+
+The library and its opcode table live in `mitmproxy/src/javascript/vm-disassembler/`.
+
 ### Javascript AST manipulation
 
 For manipulating JavaScript AST https://astexplorer.net/ is a useful tool.

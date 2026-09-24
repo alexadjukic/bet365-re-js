@@ -14,3 +14,4 @@ output/*-html.html
 output/manifest.jsonl
 data/obfuscated/**/*.js
 data/deobfuscated/**/*.js
+data/notes/
