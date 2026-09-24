@@ -143,8 +143,9 @@ function decodeProgram(bytes) {
 
 const addressOperands = instruction => instruction.operands.filter(o => o.kind === "a").map(o => o.value);
 
-// Addresses that something jumps to or starts executing at (used for labels).
-function collectLabels(instructions) {
+// Addresses that something jumps to or starts executing at (used for labels). `names` optionally maps a
+// function label (`fn_<address>`) to a human name, which is appended: `fn_29855:aesCtrXor`.
+function collectLabels(instructions, names = {}) {
     const labels = new Map();
     const functionEntries = new Set();
     for (const instruction of instructions) {
@@ -155,7 +156,12 @@ function collectLabels(instructions) {
     }
     let branch = 0;
     for (const address of [...labels.keys()].sort((a, b) => a - b)) {
-        labels.set(address, functionEntries.has(address) ? `fn_${address}` : `L${branch++}`);
+        if (functionEntries.has(address)) {
+            const label = `fn_${address}`;
+            labels.set(address, names[label] ? `${label}:${names[label]}` : label);
+        } else {
+            labels.set(address, `L${branch++}`);
+        }
     }
     return labels;
 }
@@ -212,9 +218,9 @@ function writtenRegisters(instruction) {
 
 // Human readable listing. `annotate` adds `; rN=<constant>` hints from constants loaded earlier in the
 // same straight-line run (reset at every label / function boundary).
-function disassemble(bytes, {annotate = true} = {}) {
+function disassemble(bytes, {annotate = true, names = {}} = {}) {
     const instructions = decodeProgram(bytes);
-    const labels = collectLabels(instructions);
+    const labels = collectLabels(instructions, names);
     const lines = [];
     let known = new Map();
     for (const instruction of instructions) {

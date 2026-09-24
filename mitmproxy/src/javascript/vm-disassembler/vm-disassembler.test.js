@@ -20,6 +20,13 @@ describe("vm-disassembler", () => {
         expect(text).toMatch(/L0:\n\s+22: HALT/);
     });
 
+    test("appends names to function labels", () => {
+        const bytes = [0x43, 1, 0, 0, 0, 7, 0, 0x96];   // r1 = function fn_7(params=[]); HALT
+        const {text} = disassemble(bytes, {names: {fn_7: "handler"}});
+        expect(text).toContain("r1 = function fn_7:handler(params=[])");
+        expect(text).toContain("fn_7:handler:");
+    });
+
     test("reads big-endian 32-bit ints and doubles", () => {
         const bytes = [0xe7, 1, 0xff, 0xff, 0xff, 0xfe, 0x23, 2, 0x3f, 0xf8, 0, 0, 0, 0, 0, 0];
         const [int, double] = decodeProgram(bytes);
