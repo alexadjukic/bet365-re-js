@@ -5,6 +5,16 @@ const replaceVariables = {
     '_0x49b7bf': 'globalStateContextValues', '_0x173146': 'window'
 }
 
+// A self-assignment `x = x` is dropped when it is a statement or a sequence element. Used as a value, e.g.
+// `(e = e).foo()`, it evaluates to `x`, so it is replaced by the identifier instead of being removed.
+function removeSelfAssignment(path) {
+    if (["ExpressionStatement", "SequenceExpression"].includes(path.parent.value.type)) {
+        j(path).remove();
+    } else {
+        j(path).replaceWith(path.value.left);
+    }
+}
+
 class VariableReplacementTransformer extends AstTransformer {
     constructor(stepNumber, jscodeshiftAst, output, outputBaseName) {
         super(stepNumber, jscodeshiftAst, output, outputBaseName);
@@ -16,11 +26,11 @@ class VariableReplacementTransformer extends AstTransformer {
             this.jscodeshiftAst.find(j.Identifier, {name: oldVariable})
                 .replaceWith(path => j.identifier(newVariable));
             this.jscodeshiftAst.find(j.AssignmentExpression, {operator: '=', left: {name: newVariable}, right: {name: newVariable}})
-                .remove();
+                .forEach(removeSelfAssignment);
         });
         this.jscodeshiftAst.find(j.AssignmentExpression, {operator: '='})
             .filter(path => path.value.left.name && path.value.left.name === path.value.right.name)
-            .remove();
+            .forEach(removeSelfAssignment);
     }
 }
 

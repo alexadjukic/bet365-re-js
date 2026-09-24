@@ -9,10 +9,38 @@
  */
 const fs = require("node:fs");
 const path = require("node:path");
-const j = require("jscodeshift");
+const jscodeshift = require("jscodeshift");
 const {parse} = require("@babel/parser");
 const generate = require("@babel/generator").default;
 const {ChainedTransformer} = require("../deobfuscator/refactor-obfuscated-code-jscodeshift-chained");
+
+// jscodeshift's default parser uses sourceType "module", which rejects scripts that declare a name with both
+// `var` and a top-level `function`. The bundles are classic scripts, so parse them as such (other options match
+// jscodeshift's default babel5Compat parser).
+const scriptParser = {
+    parse: code => parse(code, {
+        sourceType: "script",
+        allowHashBang: true,
+        allowReturnOutsideFunction: true,
+        tokens: true,
+        plugins: [
+            "estree",
+            "jsx",
+            "asyncGenerators",
+            "classProperties",
+            "doExpressions",
+            "exportExtensions",
+            "functionBind",
+            "functionSent",
+            "objectRestSpread",
+            "dynamicImport",
+            "nullishCoalescingOperator",
+            "optionalChaining",
+            ["decorators", {decoratorsBeforeExport: false}],
+        ],
+    }),
+};
+const j = jscodeshift.withParser(scriptParser);
 
 function deobfuscate(inputFile, outputFile, stepsDir) {
     const code = fs.readFileSync(inputFile).toString();
