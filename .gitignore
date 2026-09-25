@@ -15,3 +15,4 @@ output/manifest.jsonl
 data/obfuscated/**/*.js
 data/deobfuscated/**/*.js
 data/notes/
+data/captures/
