@@ -4,7 +4,7 @@
  *
  *   node verify-tokens.js <tokens.json> [--verbose]
  *
- * tokens.json: {"SST": base64, "SERVER_TIME": seconds, "user-agent": "...", "timezone": "...",
+ * tokens.json: {"SST": base64 from the page, "SST_CONFIG": base64 from the sports-configuration response (optional), "SERVER_TIME": seconds, "user-agent": "...", "timezone": "...",
  *               "tokens": [{"value": "<header value>", "url": "...", "method": "GET", "body": null}]}
  * Exits with 1 when any check fails.
  */
@@ -21,7 +21,8 @@ if (!input) {
 
 const capture = JSON.parse(fs.readFileSync(input, "utf8"));
 const session = {
-    sst: capture.SST,
+    // the page's SST is replaced by the one in the /defaultapi/sports-configuration response (SST_CONFIG)
+    sst: capture.SST_CONFIG || capture.SST,
     serverTime: Number(capture.SERVER_TIME) || undefined,
     userAgent: capture["user-agent"],
     timezone: capture.timezone,
