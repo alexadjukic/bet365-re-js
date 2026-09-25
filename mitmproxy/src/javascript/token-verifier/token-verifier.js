@@ -206,4 +206,4 @@ function verifyToken(token, session = {}, request = {}) {
     return {decoded, checks};
 }
 
-module.exports = {KEY, base64ToBuffer, fnv1a32, hash32, checksumFor, parseNested, verifyToken, aesCtr, splitToken, parseRecords, decodeToken, ivWord, ivFor, findIvTime};
+module.exports = {INT_KEYS, HEADER_LENGTH, KEY, base64ToBuffer, fnv1a32, hash32, checksumFor, parseNested, verifyToken, aesCtr, splitToken, parseRecords, decodeToken, ivWord, ivFor, findIvTime};
