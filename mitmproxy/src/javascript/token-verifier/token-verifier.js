@@ -179,8 +179,9 @@ function verifyToken(token, session = {}, request = {}) {
     check("nested block f parses to the end", Boolean(nested && nested.complete), nested ? `${nested.records.length} records` : "missing");
 
     check("checksum p matches", checksumFor(fields) === fields.p, `p=${fields.p}`);
-    const ivTime = findIvTime(decoded.iv, fields.b, fields.d - 60000, fields.d + 60000);
-    check("IV matches FNV(nonce b, time)", ivTime !== undefined, ivTime === undefined ? "no time within ±60 s of d" : `IV time - d = ${ivTime - fields.d} ms`);
+    const window = session.ivWindow ?? 60000;
+    const ivTime = findIvTime(decoded.iv, fields.b, fields.d - window, fields.d + window);
+    check("IV matches FNV(nonce b, time)", ivTime !== undefined, ivTime === undefined ? `no time within ±${window / 1000} s of d` : `IV time - d = ${ivTime - fields.d} ms`);
 
     if (session.sst) {
         // atob(SST) already starts with its own 2-byte length, which the token carries as well

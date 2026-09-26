@@ -6,6 +6,9 @@
 const {decodeToken, parseNested, fnv1a32, findIvTime} = require("./token-verifier");
 const {NESTED_INT_KEYS} = require("./token-encoder");
 
+/** Bits of flag word A that the program clears on purpose (fn_67505 clears A1, fn_70314 A0, A2 and A6, the geolocation error callback A5); all others are only ever set. */
+const CLEARED_FLAG_A_BITS = (1 << 0) | (1 << 1) | (1 << 2) | (1 << 5) | (1 << 6);
+
 /** Value of f.i_au before the first `Loader.load` call was seen by the hook (r63 undefined). */
 const NO_ACTIVITY = 1111;
 
@@ -87,13 +90,13 @@ function nestedFields(raw) {
 
 /**
  * Checks the field rules on captured tokens `[{value, url}]`; `serverTime` is the page's SERVER_TIME in seconds.
- * `now` of a token (the Date.now() of the VM handler) is recovered from its IV. Tokens are processed in creation order.
+ * `now` of a token (the Date.now() of the VM handler) is recovered from its IV, searched within `ivWindow` ms of `d`. Tokens are processed in creation order.
  * Returns {rows, checks: [{name, ok, detail}]}.
  */
-function checkFieldRules(tokens, {serverTime} = {}) {
+function checkFieldRules(tokens, {serverTime, ivWindow = 60000} = {}) {
     const rows = tokens.map((t, index) => {
         const {fields, iv} = decodeToken(t.value);
-        const now = findIvTime(iv, fields.b, Number(fields.d) - 60000, Number(fields.d) + 60000);
+        const now = findIvTime(iv, fields.b, Number(fields.d) - ivWindow, Number(fields.d) + ivWindow);
         return {index, url: t.url, fields, f: nestedFields(fields.f), now, isSocket: fields.u.startsWith("/zap/")};
     });
     rows.sort((a, b) => a.now - b.now || a.f.i_r - b.f.i_r);
@@ -153,6 +156,21 @@ function checkFieldRules(tokens, {serverTime} = {}) {
         return ok;
     });
     all("f.p entries are ' ~ '-joined URLs (any scheme, e.g. moz-extension://) without a query string", r => !r.f.p || r.f.p.split(" ~ ").slice(1).every(u => /^[a-z][a-z0-9+.-]*:\/\/[^?]+$/.test(u)));
+
+    // flag word A only ever gains bits, except for the bits the code clears on purpose (A0, A1, A2, A5 and A6); f.i_cl only counts up
+    let flagsSoFar = 0;
+    all("flag word A never loses a bit other than A0, A1, A2, A5, A6 (e.g. A20, repeated clicks, is sticky)", r => {
+        const lost = flagsSoFar & ~Number(r.fields.r) & ~CLEARED_FLAG_A_BITS;
+        flagsSoFar |= Number(r.fields.r);
+        return lost === 0;
+    });
+    let clicksSoFar = 0;
+    all("f.i_cl (click counter) never decreases", r => {
+        if (r.f.i_cl === undefined) return true;
+        const ok = r.f.i_cl >= clicksSoFar;
+        clicksSoFar = Math.max(clicksSoFar, r.f.i_cl);
+        return ok;
+    });
 
     // build 16520 adds f.pub to subscribe (0x16) and unsubscribe (0x17) messages: "s"/"u" followed by the message's topic list
     const withTopics = tokens.filter(t => t.topics !== undefined);
