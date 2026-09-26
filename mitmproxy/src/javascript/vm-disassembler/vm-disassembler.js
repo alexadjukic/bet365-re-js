@@ -5,8 +5,11 @@
 // Interpreter facts (taken from its opcode handler table):
 //   * registers live in one array; a few are special (see SPECIAL_REGISTERS)
 //   * the program is a byte array (atob of the base64), operands are single bytes unless noted
-//   * 32-bit operands are big-endian; strings are 16-bit big-endian length + bytes XOR 0x56
+//   * 32-bit operands are big-endian; strings are 16-bit big-endian length + bytes XOR a key (0x56 in site version 16504)
 //   * every opcode has a fixed layout, so a linear sweep from offset 0 decodes the whole program
+// The opcode numbers, the string key and the special register numbers are re-generated in every build of the bundle.
+// OPCODES, STRING_XOR_KEY and SPECIAL_REGISTERS below are those of site version 16504 (the default profile); vm-profile.js
+// derives the profile of any other build from its interpreter and makeProfile() turns it into what the decoder uses.
 const {parse} = require("@babel/parser");
 const traverse = require("@babel/traverse").default;
 
@@ -22,7 +25,7 @@ const SPECIAL_REGISTERS = {
     0x85: "RETV",   // return-value slot of a MAKEFN function
 };
 
-const reg = n => SPECIAL_REGISTERS[n] || `r${n}`;
+const registerNamer = names => n => names[n] || `r${n}`;
 
 // Operand kinds: r=register, b=byte immediate, w=32-bit signed immediate, a=32-bit code address,
 // s=string, d=double, regs/bytes=count byte followed by that many bytes.
@@ -74,14 +77,31 @@ const OPCODES = {
     0x1a: BINARY("USHR", ">>>"),
 };
 
+const SPECS_BY_NAME = Object.fromEntries(Object.values(OPCODES).map(spec => [spec.name, spec]));
+
+// A profile is what varies between builds: opcode byte -> instruction spec, the string XOR key and the register names.
+const DEFAULT_PROFILE = {opcodes: OPCODES, stringMask: STRING_XOR_KEY, registerNames: SPECIAL_REGISTERS};
+
+// Builds a profile from vm-profile.js's extractProfile() result: {opcodes: {byte: name}, stringMask, registers: {PC, ZERO, ONE, UNDEF, THIS, RETV}}.
+function makeProfile({opcodes, stringMask, registers}) {
+    const table = {};
+    for (const [byte, name] of Object.entries(opcodes)) {
+        if (!SPECS_BY_NAME[name]) throw new Error(`no instruction layout for opcode name ${name}`);
+        table[Number(byte)] = SPECS_BY_NAME[name];
+    }
+    const registerNames = {};
+    for (const [name, number] of Object.entries(registers)) if (number !== undefined) registerNames[number] = name;
+    return {opcodes: table, stringMask: stringMask === undefined ? STRING_XOR_KEY : stringMask, registerNames};
+}
+
 function base64ToBytes(base64) {
     return Array.from(Buffer.from(base64, "base64"));
 }
 
 // Reads the operands of one instruction. Throws on an unknown opcode or a truncated program.
-function decodeInstruction(bytes, offset) {
+function decodeInstruction(bytes, offset, profile = DEFAULT_PROFILE) {
     const opcode = bytes[offset];
-    const spec = OPCODES[opcode];
+    const spec = profile.opcodes[opcode];
     if (!spec) {
         throw new Error(`unknown opcode 0x${opcode.toString(16)} at offset ${offset}`);
     }
@@ -105,7 +125,7 @@ function decodeInstruction(bytes, offset) {
                 const length = (bytes[cursor++] << 8) | bytes[cursor++];
                 need(length);
                 let text = "";
-                for (let i = 0; i < length; i++) text += String.fromCharCode(STRING_XOR_KEY ^ bytes[cursor++]);
+                for (let i = 0; i < length; i++) text += String.fromCharCode(profile.stringMask ^ bytes[cursor++]);
                 operands.push({kind: "s", value: text});
                 break;
             }
@@ -130,11 +150,11 @@ function decodeInstruction(bytes, offset) {
 }
 
 // Linear sweep over the whole program.
-function decodeProgram(bytes) {
+function decodeProgram(bytes, profile = DEFAULT_PROFILE) {
     const instructions = [];
     let offset = 0;
     while (offset < bytes.length) {
-        const instruction = decodeInstruction(bytes, offset);
+        const instruction = decodeInstruction(bytes, offset, profile);
         instructions.push(instruction);
         offset += instruction.size;
     }
@@ -170,7 +190,7 @@ const quote = value => JSON.stringify(value);
 const formatConstant = value => (typeof value === "string" ? quote(value) : String(value));
 
 // Renders one instruction, e.g. `r10 = r5[r6]` or `r9 = r7.call(r8, [r4])`.
-function renderInstruction(instruction, labels) {
+function renderInstruction(instruction, labels, reg) {
     const label = address => labels.get(address) || `@${address}`;
     const list = registers => `[${registers.map(reg).join(", ")}]`;
     const [a, b, c, d] = instruction.operands;
@@ -218,8 +238,9 @@ function writtenRegisters(instruction) {
 
 // Human readable listing. `annotate` adds `; rN=<constant>` hints from constants loaded earlier in the
 // same straight-line run (reset at every label / function boundary).
-function disassemble(bytes, {annotate = true, names = {}} = {}) {
-    const instructions = decodeProgram(bytes);
+function disassemble(bytes, {annotate = true, names = {}, profile = DEFAULT_PROFILE} = {}) {
+    const reg = registerNamer(profile.registerNames);
+    const instructions = decodeProgram(bytes, profile);
     const labels = collectLabels(instructions, names);
     const lines = [];
     let known = new Map();
@@ -228,7 +249,7 @@ function disassemble(bytes, {annotate = true, names = {}} = {}) {
             known = new Map();
             lines.push(`${labels.get(instruction.offset)}:`);
         }
-        const text = renderInstruction(instruction, labels);
+        const text = renderInstruction(instruction, labels, reg);
         let note = "";
         if (annotate && !CONSTANT_LOADS.has(instruction.name)) {
             const used = new Set();
@@ -288,6 +309,9 @@ function extractProgramBase64(source, minLength = 1000) {
 module.exports = {
     OPCODES,
     SPECIAL_REGISTERS,
+    STRING_XOR_KEY,
+    DEFAULT_PROFILE,
+    makeProfile,
     base64ToBytes,
     decodeInstruction,
     decodeProgram,

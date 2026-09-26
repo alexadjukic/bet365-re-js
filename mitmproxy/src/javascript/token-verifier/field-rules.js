@@ -61,6 +61,21 @@ function classifyStack(stack, vendor = "") {
     return stack.includes("eval") ? "J" : "K";
 }
 
+/**
+ * f.pub (build 16520 and later, websocket tokens only, fn_70657 and fn_31070): the pending subscribe and unsubscribe topic lists as
+ * `s<subscribe>`, `u<unsubscribe>` or `s<subscribe>|u<unsubscribe>`; undefined (the field is omitted) when both are empty.
+ *
+ * The program also cuts each list to 1023 characters at a comma (fn_70041, and to 510 each when together longer than 1021), but
+ * that has no effect: `RET` stores the return value in the caller's register and then copies back every register of the keep set
+ * accumulated so far, which already holds the list registers (from fn_70154), so the untruncated list overwrites the result.
+ * Real tokens confirm it (1319 and 1250 character lists appear whole).
+ */
+function pubValue(subscribe = "", unsubscribe = "") {
+    if (subscribe === "" && unsubscribe === "") return undefined;
+    if (subscribe === "") return `u${unsubscribe}`;
+    return unsubscribe === "" ? `s${subscribe}` : `s${subscribe}|u${unsubscribe}`;
+}
+
 const le = raw => Number(raw.reduceRight((n, byte) => (n << 8n) | BigInt(byte), 0n));
 
 /** The nested block `f` as an object; integer keys are decoded from their little-endian bytes. */
@@ -143,11 +158,11 @@ function checkFieldRules(tokens, {serverTime} = {}) {
     const withTopics = tokens.filter(t => t.topics !== undefined);
     if (withTopics.length) {
         const pubs = withTopics.map(t => nestedFields(decodeToken(t.value).fields.f).pub).filter(pub => pub !== undefined);
-        const expected = withTopics.filter(t => [0x16, 0x17].includes(t.message_type)).map(t => (t.message_type === 0x16 ? "s" : "u") + t.topics);
+        const expected = withTopics.filter(t => [0x16, 0x17].includes(t.message_type)).map(t => pubValue(t.message_type === 0x16 ? t.topics : "", t.message_type === 0x17 ? t.topics : ""));
         const matched = pubs.filter(pub => expected.includes(pub)).length;
         check("f.pub = s|u + the topic list of the websocket message (build 16520 and later)", pubs.length === matched, `${matched}/${pubs.length} tokens with pub match a message`);
     }
     return {rows, checks};
 }
 
-module.exports = {NO_ACTIVITY, UNCOUNTED_URL_PARTS, isCountedUrl, activityAge, flagC, pageAge, clockSkew, iWs, iDf, appendSource, classifyStack, nestedFields, checkFieldRules};
+module.exports = {NO_ACTIVITY, UNCOUNTED_URL_PARTS, isCountedUrl, activityAge, flagC, pageAge, clockSkew, iWs, iDf, appendSource, classifyStack, pubValue, nestedFields, checkFieldRules};

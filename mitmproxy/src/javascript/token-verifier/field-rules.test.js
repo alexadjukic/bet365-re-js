@@ -1,4 +1,4 @@
-const {NO_ACTIVITY, isCountedUrl, activityAge, flagC, pageAge, clockSkew, iWs, iDf, appendSource, classifyStack, nestedFields, checkFieldRules} = require("./field-rules");
+const {NO_ACTIVITY, isCountedUrl, activityAge, flagC, pageAge, clockSkew, iWs, iDf, appendSource, classifyStack, pubValue, nestedFields, checkFieldRules} = require("./field-rules");
 const {buildToken} = require("./token-encoder");
 
 describe("field-rules", () => {
@@ -56,5 +56,19 @@ describe("field-rules", () => {
         // created 200 ms after the start (i_pl = 0), the page's SERVER_TIME one second ahead of the start time (skew +1000 ms)
         const {checks} = checkFieldRules([{value: token, url: "https://h/x"}], {serverTime: 1700000001});
         expect(checks.filter(c => !c.ok).map(c => c.name)).toEqual([]);
+    });
+
+    test("f.pub is s/u plus the pending topic lists, omitted when both are empty", () => {
+        expect(pubValue("A,B", "")).toBe("sA,B");
+        expect(pubValue("", "C")).toBe("uC");
+        expect(pubValue("A,B", "C")).toBe("sA,B|uC");
+        expect(pubValue("", "")).toBeUndefined();
+    });
+
+    test("long topic lists are kept whole (the cut to 1023 characters in the program is overwritten by RET's keep set)", () => {
+        const list = Array.from({length: 400}, (_, i) => `T${i}`).join(",");
+        expect(list.length).toBeGreaterThan(1023);
+        expect(pubValue(list, "")).toBe(`s${list}`);
+        expect(pubValue(list, list)).toBe(`s${list}|u${list}`);
     });
 });
