@@ -16,4 +16,4 @@ data/obfuscated/**/*.js
 data/deobfuscated/**/*.js
 data/notes/
 data/captures/
-flows
+flows*

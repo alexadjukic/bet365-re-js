@@ -14,7 +14,7 @@ const DEFAULT_HEADER = Buffer.from([0x03, 0x48, 0x00, 0x04]);
 const FIXED_WIDTH = {};
 
 // keys of the nested block `f` that hold integers (everything else there is a string)
-const NESTED_INT_KEYS = new Set(["i_u", "i_r", "i_tf", "i_bt", "i_ps", "i_z", "i_au", "i_pl", "i_ca", "i_cb", "i_cr", "i_df", "i_sw", "i_sh", "i_hc", "i_vr", "i_hp", "i_kl", "i_ws"]);
+const NESTED_INT_KEYS = new Set(["i_u", "i_r", "i_tf", "i_bt", "i_cl", "i_ps", "i_z", "i_au", "i_pl", "i_ca", "i_cb", "i_cr", "i_df", "i_sw", "i_sh", "i_hc", "i_vr", "i_hp", "i_kl", "i_ws"]);
 
 /**
  * Width chosen by the VM (tlvInt): 1 byte below 2^8, 2 below 2^16, 4 up to the signed 32-bit maximum, else 8.

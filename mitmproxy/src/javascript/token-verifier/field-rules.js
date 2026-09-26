@@ -137,7 +137,16 @@ function checkFieldRules(tokens, {serverTime} = {}) {
         if (value !== "") list = value;
         return ok;
     });
-    all("f.p entries are ' ~ '-joined URLs without a query string", r => !r.f.p || r.f.p.split(" ~ ").slice(1).every(u => /^https?:\/\/[^?]+$/.test(u)));
+    all("f.p entries are ' ~ '-joined URLs (any scheme, e.g. moz-extension://) without a query string", r => !r.f.p || r.f.p.split(" ~ ").slice(1).every(u => /^[a-z][a-z0-9+.-]*:\/\/[^?]+$/.test(u)));
+
+    // build 16520 adds f.pub to subscribe (0x16) and unsubscribe (0x17) messages: "s"/"u" followed by the message's topic list
+    const withTopics = tokens.filter(t => t.topics !== undefined);
+    if (withTopics.length) {
+        const pubs = withTopics.map(t => nestedFields(decodeToken(t.value).fields.f).pub).filter(pub => pub !== undefined);
+        const expected = withTopics.filter(t => [0x16, 0x17].includes(t.message_type)).map(t => (t.message_type === 0x16 ? "s" : "u") + t.topics);
+        const matched = pubs.filter(pub => expected.includes(pub)).length;
+        check("f.pub = s|u + the topic list of the websocket message (build 16520 and later)", pubs.length === matched, `${matched}/${pubs.length} tokens with pub match a message`);
+    }
     return {rows, checks};
 }
 
