@@ -1,3 +1,5 @@
 jsbeautifier
 rjsmin
+esprima
 mitmproxy
+websockets

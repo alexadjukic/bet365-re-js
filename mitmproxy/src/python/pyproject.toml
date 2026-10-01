@@ -7,7 +7,9 @@ requires-python = "==3.12"
 dependencies = [
     "mitmproxy==11.1.3",
     "jsbeautifier",
-    "rjsmin"
+    "rjsmin",
+    "esprima",
+    "websockets"
 ]
 
 [project.optional-dependencies]
