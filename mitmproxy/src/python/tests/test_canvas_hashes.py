@@ -1,8 +1,10 @@
 import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -69,6 +71,41 @@ def test_a_noise_seed_is_reproducible_changes_the_hashes_and_keeps_i_cr_at_zero(
     assert seeded.i_cr == 0 and other.i_cr == 0
     assert seeded.i_ca != plain.i_ca and seeded.i_cb != plain.i_cb
     assert other.i_ca != seeded.i_ca and other.i_cb != seeded.i_cb
+
+
+def test_fake_page_url_cannot_be_combined_with_page_url():
+    with pytest.raises(ValueError):
+        generate_canvas_hashes(fake_page_url="https://www.example.test/", page_url="http://127.0.0.1/")
+
+
+@needs_firefox
+def test_a_fake_page_url_is_served_in_the_browser_and_never_requested():
+    plain = generate_canvas_hashes()
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(50)
+    requests = []
+
+    def accept():
+        while True:
+            try:
+                connection, _ = listener.accept()
+            except OSError:
+                return
+            requests.append(connection.recv(300))
+            connection.close()
+
+    threading.Thread(target=accept, daemon=True).start()
+    port = listener.getsockname()[1]
+    try:
+        # the safety-net proxy is replaced by a counter: whatever escapes the interception would land here
+        hashes = generate_canvas_hashes(fake_page_url="https://www.example.test/a/b?c=1#d",
+                                        prefs={"network.proxy.http_port": port, "network.proxy.ssl_port": port})
+    finally:
+        listener.close()
+    assert not [r for r in requests if b"example.test" in r]
+    assert (hashes.i_ca, hashes.i_cb) != (plain.i_ca, plain.i_cb)  # treated as a web page: Firefox's canvas noise applies
+    assert hashes.i_cr == 0
 
 
 @needs_firefox

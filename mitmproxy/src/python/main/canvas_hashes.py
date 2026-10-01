@@ -4,8 +4,9 @@ Python port of mitmproxy/src/javascript/canvas-hash/canvas-hash.js. The site's f
 fn_56921 in 16520 and 16528 of received-32.js) draws two separate 280x60 canvases with the same picture and a
 different text, then hashes `canvas.toDataURL()` with fnv1a32. The pixels depend on the browser that renders them,
 so the drawing runs in a real headless Firefox (the captures were made with Firefox 156 on Linux). Firefox is
-started with a throw-away profile and driven through WebDriver BiDi; only about:blank is opened, nothing is
-requested from any site.
+started with a throw-away profile and driven through WebDriver BiDi; by default only about:blank is opened. With
+fake_page_url the browser believes it is on that address but every request is answered inside the browser (BiDi
+network interception), so nothing is requested from any site.
 
 The code that runs in the page is NOT duplicated here: it is read from
 mitmproxy/src/javascript/canvas-hash/canvas-page.js, the file the Node implementation uses too, so both give the same
@@ -29,6 +30,7 @@ import tempfile
 import time
 from pathlib import Path
 from typing import NamedTuple, Optional
+from urllib.parse import urldefrag
 
 from websockets.sync.client import connect
 
@@ -112,12 +114,22 @@ class _Bidi:
     def __exit__(self, *exc_info) -> None:
         self._connection.__exit__(*exc_info)
 
-    def send(self, method: str, params: Optional[dict] = None) -> dict:
+    def send_nowait(self, method: str, params: Optional[dict] = None) -> int:
+        """Sends a command without waiting for its answer (the answer is dropped by send()'s read loop)."""
         command_id, self._next_id = self._next_id, self._next_id + 1
         self._socket.send(json.dumps({"id": command_id, "method": method, "params": params or {}}))
+        return command_id
+
+    def send(self, method: str, params: Optional[dict] = None, on_event=None) -> dict:
+        """Sends a command and returns its result; on_event(method, params) sees every event received meanwhile."""
+        command_id = self.send_nowait(method, params)
         while True:
             message = json.loads(self._socket.recv(timeout=self._timeout))
-            if message.get("id") != command_id:  # an event, or the answer to something else
+            if message.get("type") == "event":
+                if on_event:
+                    on_event(message["method"], message["params"])
+                continue
+            if message.get("id") != command_id:  # the answer to a send_nowait command
                 continue
             if message.get("type") == "error":
                 raise RuntimeError(f"{message['error']}: {message['message']}")
@@ -142,6 +154,36 @@ def _hash_url(url: Optional[str]) -> int:
     return 0 if url is None else fnv1a32(url)  # the VM keeps its hash at 0 when the 2d context is missing
 
 
+PLACEHOLDER_HTML = "<!doctype html><html><head><meta charset=\"utf-8\"><title>placeholder</title></head><body></body></html>"
+
+# Safety net for fake_page_url: every request that is not intercepted (there should be none) goes to a closed port.
+_DEAD_PROXY_PREFS = {
+    "network.proxy.type": 1, "network.proxy.http": "127.0.0.1", "network.proxy.http_port": 9,
+    "network.proxy.ssl": "127.0.0.1", "network.proxy.ssl_port": 9, "network.proxy.no_proxies_on": "",
+    "network.proxy.allow_hijacking_localhost": True,
+}
+
+
+def _serve_placeholder(client: "_Bidi", fake_page_url: str, html: str):
+    """Returns an event handler that answers every request in the browser itself: the page URL gets the placeholder
+    HTML, anything else (favicon, ...) an empty 404. No request is ever continued, so nothing is sent to the network."""
+    page = urldefrag(fake_page_url).url
+
+    def on_event(method: str, params: dict) -> None:
+        if method != "network.beforeRequestSent" or not params.get("isBlocked"):
+            return
+        is_page = urldefrag(params["request"]["url"]).url == page
+        client.send_nowait("network.provideResponse", {
+            "request": params["request"]["request"],
+            "statusCode": 200 if is_page else 404,
+            "reasonPhrase": "OK" if is_page else "Not Found",
+            "headers": [{"name": "Content-Type", "value": {"type": "string", "value": "text/html; charset=utf-8"}}],
+            "body": {"type": "string", "value": html if is_page else ""},
+        })
+
+    return on_event
+
+
 def generate_canvas_hashes(
     noise_seed: Optional[int] = None,
     *,
@@ -150,6 +192,8 @@ def generate_canvas_hashes(
     prefs: Optional[dict] = None,
     profile: Optional[str] = None,
     page_url: Optional[str] = None,
+    fake_page_url: Optional[str] = None,
+    fake_page_html: str = PLACEHOLDER_HTML,
 ) -> CanvasHashes:
     """Draws the two canvases in a headless Firefox and returns CanvasHashes(i_ca, i_cb, i_cr).
 
@@ -162,7 +206,14 @@ def generate_canvas_hashes(
                 the extensions installed in it do to the canvases.
     page_url    page to load before drawing. Extensions only run on web pages, so use an http(s) URL (a local
                 server is fine) when testing them; the default about:blank is not touched by any extension.
+    fake_page_url
+                a URL the browser believes it is visiting (e.g. "https://www.example.test/"). Nothing is requested
+                from it: every request is answered inside the browser with fake_page_html, and a dead proxy is
+                set as a safety net. The canvas noise depends on the site, so this gives the pair of that host.
+                Cannot be combined with page_url.
     """
+    if fake_page_url and page_url:
+        raise ValueError("fake_page_url and page_url cannot be combined")
     if noise_seed is not None and not (
             isinstance(noise_seed, int) and not isinstance(noise_seed, bool) and 0 <= noise_seed <= 0xFFFFFFFF):
         raise ValueError(f"noise_seed must be an unsigned 32-bit integer, got {noise_seed!r}")
@@ -171,20 +222,27 @@ def generate_canvas_hashes(
     declaration = ("() => {\n" + PAGE_SCRIPT.read_text(encoding="utf-8") + "\n" + noise
                    + "\nreturn drawCanvases(CANVAS_A_TEXT, CANVAS_B_TEXT);\n}")
 
-    process, endpoint, run_profile = _launch_firefox(_find_firefox(firefox_path), timeout, prefs or {}, profile)
+    all_prefs = {**(_DEAD_PROXY_PREFS if fake_page_url else {}), **(prefs or {})}
+    process, endpoint, run_profile = _launch_firefox(_find_firefox(firefox_path), timeout, all_prefs, profile)
     try:
         with _Bidi(f"{endpoint}/session", timeout) as client:
             client.send("session.new", {"capabilities": {}})
             context = client.send("browsingContext.getTree")["contexts"][0]["context"]
-            if page_url:
-                client.send("browsingContext.navigate", {"context": context, "url": page_url, "wait": "complete"})
+            on_event = None
+            if fake_page_url:
+                on_event = _serve_placeholder(client, fake_page_url, fake_page_html)
+                client.send("session.subscribe", {"events": ["network.beforeRequestSent"]})
+                client.send("network.addIntercept", {"phases": ["beforeRequestSent"]})
+            if page_url or fake_page_url:
+                client.send("browsingContext.navigate",
+                            {"context": context, "url": page_url or fake_page_url, "wait": "complete"}, on_event)
             result = client.send("script.callFunction", {
                 "functionDeclaration": declaration,
                 "target": {"context": context},
                 "awaitPromise": False,
                 "resultOwnership": "none",
                 "serializationOptions": {"maxObjectDepth": 2},
-            })
+            }, on_event)
         if result["type"] != "success":
             raise RuntimeError(f"script failed: {json.dumps(result.get('exceptionDetails'))}")
         drawn = _from_remote(result["result"])
